@@ -5,12 +5,13 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::string::FromUtf8Error;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
 pub enum ConfigError {
     IOError(std::io::Error),
     ParseError(toml::de::Error),
+    SaveError(toml::ser::Error),
     CodecError(FromUtf8Error),
 }
 
@@ -23,6 +24,12 @@ impl From<io::Error> for ConfigError {
 impl From<toml::de::Error> for ConfigError {
     fn from(err: toml::de::Error) -> Self {
         ConfigError::ParseError(err)
+    }
+}
+
+impl From<toml::ser::Error> for ConfigError {
+    fn from(e: toml::ser::Error) -> Self {
+        ConfigError::SaveError(e)
     }
 }
 
@@ -48,13 +55,13 @@ impl Display for ConfigError {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Config {
     repo: Repo,
     shortcut: Shortcut,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Shortcut {
     find: String,
     insert: String,
@@ -74,6 +81,10 @@ impl Config {
     pub fn shortcut(&self) -> &Shortcut {
         &self.shortcut
     }
+
+    pub fn is_default(&self) -> bool {
+        self.repo.path == DEFAULT_REPO_PATH
+    }
 }
 
 impl Shortcut {
@@ -87,6 +98,16 @@ impl Shortcut {
 
     pub fn quit(&self) -> &str {
         &self.quit
+    }
+}
+
+impl Default for Shortcut {
+    fn default() -> Self {
+        Self {
+            find: "<Control><Shift>f".to_string(),
+            insert: "<Control>i>".to_string(),
+            quit: "<Meta>q".to_string(),
+        }
     }
 }
 
@@ -108,9 +129,12 @@ impl ConfigLoader {
 
     pub fn load(&self) -> Result<Config, ConfigError> {
         self.create_dir()?;
-        self.attempt_set_default()?;
-        let content = self.load_config()?;
-        Config::from_str(&content)
+        if Self::is_exists(&self.path) {
+            let content = self.load_config()?;
+            Config::from_str(&content)
+        } else {
+            Ok(Config::default())
+        }
     }
 
     fn create_dir(&self) -> Result<(), io::Error> {
@@ -128,19 +152,10 @@ impl ConfigLoader {
         }
     }
 
-    fn attempt_set_default(&self) -> Result<(), io::Error> {
-        match File::open(&self.path) {
-            Ok(_) => Ok(()),
-            Err(err) => match err.kind() {
-                io::ErrorKind::NotFound => self.create_default(),
-                _ => Err(err),
-            },
-        }
-    }
-
-    fn create_default(&self) -> Result<(), io::Error> {
+    fn save(&self, c: &Config) -> Result<(), io::Error> {
+        let content = toml::to_string(c)?;
         let mut f = File::create(&self.path)?;
-        f.write_all(DEFAULT_CONFIG_CONTENT.as_bytes())?;
+        f.write_all(content.as_bytes())?;
         Ok(())
     }
 
@@ -152,10 +167,20 @@ impl ConfigLoader {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Repo {
     path: String,
 }
+
+impl Default for Repo {
+    fn default() -> Self {
+        Self {
+            path: DEFAULT_REPO_PATH.to_string(),
+        }
+    }
+}
+
+const DEFAULT_REPO_PATH: &'static str = "__default";
 
 const DEFAULT_CONFIG_CONTENT: &'static str = r###"
 [repo]
@@ -167,15 +192,3 @@ insert = "<Control>i"
 quit = "<Meta>q"
 
 "###;
-
-#[cfg(test)]
-mod tests {
-    use super::ConfigLoader;
-
-    #[test]
-    fn test_default_config_loader() {
-        let loader = ConfigLoader::new();
-        let config = loader.load().unwrap();
-        assert_eq!(config.colors.red, "#D50000");
-    }
-}

@@ -44,8 +44,8 @@ pub struct AppModel {
     show_list: bool,
     show_back: bool,
 
-    config: Rc<RefCell<Config>>,
-    kasten: Rc<RefCell<Kasten>>,
+    config: Option<Rc<RefCell<Config>>>,
+    kasten: Option<Rc<RefCell<Kasten>>>,
 }
 
 pub struct AppComponents {
