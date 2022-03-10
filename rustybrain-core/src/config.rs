@@ -51,6 +51,7 @@ impl Display for ConfigError {
             ConfigError::IOError(e) => e.fmt(f),
             ConfigError::ParseError(e) => e.fmt(f),
             ConfigError::CodecError(e) => e.fmt(f),
+            ConfigError::SaveError(e) => e.fmt(f),
         }
     }
 }
@@ -105,7 +106,7 @@ impl Default for Shortcut {
     fn default() -> Self {
         Self {
             find: "<Control><Shift>f".to_string(),
-            insert: "<Control>i>".to_string(),
+            insert: "<Control>i".to_string(),
             quit: "<Meta>q".to_string(),
         }
     }
@@ -152,7 +153,7 @@ impl ConfigLoader {
         }
     }
 
-    fn save(&self, c: &Config) -> Result<(), io::Error> {
+    fn save(&self, c: &Config) -> Result<(), ConfigError> {
         let content = toml::to_string(c)?;
         let mut f = File::create(&self.path)?;
         f.write_all(content.as_bytes())?;
@@ -181,14 +182,3 @@ impl Default for Repo {
 }
 
 const DEFAULT_REPO_PATH: &'static str = "__default";
-
-const DEFAULT_CONFIG_CONTENT: &'static str = r###"
-[repo]
-path = "RustyBrain"
-
-[shortcut]
-find = "<Control><Shift>f"
-insert = "<Control>i"
-quit = "<Meta>q"
-
-"###;

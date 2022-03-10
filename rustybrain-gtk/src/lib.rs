@@ -44,8 +44,8 @@ pub struct AppModel {
     show_list: bool,
     show_back: bool,
 
-    config: Option<Rc<RefCell<Config>>>,
-    kasten: Option<Rc<RefCell<Kasten>>>,
+    config: Rc<RefCell<Config>>,
+    kasten: Rc<RefCell<Kasten>>,
 }
 
 pub struct AppComponents {
@@ -54,6 +54,7 @@ pub struct AppComponents {
     backlinks: RelmComponent<backlinks::Model, AppModel>,
     search: RelmComponent<search::Model, AppModel>,
     msg: RelmComponent<msg::Model, AppModel>,
+    blank: RelmComponent<blank::Model, AppModel>,
 }
 
 impl Components<AppModel> for AppComponents {
@@ -67,6 +68,7 @@ impl Components<AppModel> for AppComponents {
             backlinks: RelmComponent::new(parent_model, parent_sender.clone()),
             search: RelmComponent::new(parent_model, parent_sender.clone()),
             msg: RelmComponent::new(parent_model, parent_sender.clone()),
+            blank: RelmComponent::new(parent_model, parent_sender.clone()),
         }
     }
 
@@ -80,6 +82,7 @@ pub struct AppWidgets {
     left: gtk::ScrolledWindow,
     center: gtk::Box,
     right: gtk::ScrolledWindow,
+    blank: gtk::Frame,
 }
 
 impl Model for AppModel {
@@ -178,6 +181,63 @@ impl Widgets<AppModel, ()> for AppWidgets {
 
         window.set_child(Some(&box_));
 
+        let shortcut_ctrl = Self::shortcut_ctrl(sender.clone(), model);
+        window.add_controller(&shortcut_ctrl);
+        let s = sender.clone();
+        if !model.config.as_ref().borrow().is_default() {
+            window.connect_show(move |_| send!(s, Msg::StartSearch));
+        }
+
+        let blank = components.blank.root_widget().clone();
+
+        AppWidgets {
+            window,
+            main_layout: box_,
+            left,
+            right,
+            center,
+            blank,
+        }
+    }
+
+    fn root_widget(&self) -> Self::Root {
+        self.window.clone()
+    }
+
+    fn view(&mut self, model: &AppModel, _sender: relm4::Sender<Msg>) {
+        loop {
+            match self.main_layout.last_child() {
+                Some(c) => self.main_layout.remove(&c),
+                None => break,
+            }
+        }
+        let c = model.config.as_ref().borrow();
+        if c.is_default() {
+            self.main_layout.append(&self.blank);
+        } else {
+            if model.show_list {
+                self.main_layout.append(&self.left);
+            }
+            self.main_layout.append(&self.center);
+            if model.show_back {
+                self.main_layout.append(&self.right);
+            }
+        }
+        let provider = CssProvider::new();
+        provider.load_from_data(CSS.as_bytes());
+        StyleContext::add_provider_for_display(
+            &self.root_widget().display(),
+            &provider,
+            100,
+        );
+    }
+}
+
+impl AppWidgets {
+    fn shortcut_ctrl(
+        sender: relm4::Sender<Msg>,
+        model: &AppModel,
+    ) -> ShortcutController {
         let shortcut_ctrl = ShortcutController::builder()
             .scope(gtk::ShortcutScope::Global)
             .build();
@@ -198,49 +258,8 @@ impl Widgets<AppModel, ()> for AppWidgets {
             c.shortcut().quit(),
             Msg::Quit,
         ));
-        window.add_controller(&shortcut_ctrl);
-        let s = sender.clone();
-        window.connect_show(move |_| send!(s, Msg::StartSearch));
-
-        AppWidgets {
-            window,
-            main_layout: box_,
-            left,
-            right,
-            center,
-        }
+        shortcut_ctrl
     }
-
-    fn root_widget(&self) -> Self::Root {
-        self.window.clone()
-    }
-
-    fn view(&mut self, model: &AppModel, _sender: relm4::Sender<Msg>) {
-        loop {
-            match self.main_layout.last_child() {
-                Some(c) => self.main_layout.remove(&c),
-                None => break,
-            }
-        }
-        if model.show_list {
-            self.main_layout.append(&self.left);
-        }
-        self.main_layout.append(&self.center);
-        if model.show_back {
-            self.main_layout.append(&self.right);
-        }
-
-        let provider = CssProvider::new();
-        provider.load_from_data(CSS.as_bytes());
-        StyleContext::add_provider_for_display(
-            &self.root_widget().display(),
-            &provider,
-            100,
-        );
-    }
-}
-
-impl AppWidgets {
     fn bind_key(sender: relm4::Sender<Msg>, key: &str, msg: Msg) -> Shortcut {
         let action = CallbackAction::new(move |_, _| {
             send!(sender, msg.clone());

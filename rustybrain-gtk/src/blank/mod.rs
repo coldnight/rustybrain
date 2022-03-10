@@ -42,10 +42,13 @@ impl relm4::Widgets<Model, super::AppModel> for Blank {
         _components: &(),
         _sender: relm4::Sender<Msg>,
     ) -> Self {
-        let btn = gtk::Button::builder().label("Bootstrap").build();
+        let assistant =
+            gtk::Assistant::builder().modal(true).visible(true).build();
         let frame = Frame::builder()
             .label("Nobody ever Starts From Scratch")
-            .child(&btn)
+            .child(&assistant)
+            .vexpand(true)
+            .hexpand(true)
             .build();
         Self { frame }
     }
